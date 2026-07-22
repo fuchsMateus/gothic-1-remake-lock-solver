@@ -73,6 +73,7 @@ class LockpickApp(tk.Tk):
         self.steps: list[Step] | None = None
         self.solution_cached = False
         self.events: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        self.stop_event: threading.Event | None = None
         self.rebuild_job: str | None = None
         self.selected_layer = 0
         self.preset_store = PresetStore()
@@ -119,9 +120,15 @@ class LockpickApp(tk.Tk):
         action_row.grid(row=1, column=0, sticky="ew", pady=(12, 0))
         self.action_row = action_row
         ttk.Label(action_row, text="Layers:").grid(row=0, column=0, sticky="w")
-        ttk.Spinbox(action_row, from_=3, to=7, width=5, textvariable=self.layer_count).grid(
-            row=0, column=1, padx=(6, 18), sticky="w"
-        )
+        ttk.Spinbox(
+            action_row,
+            from_=3,
+            to=7,
+            width=5,
+            textvariable=self.layer_count,
+            validate="key",
+            validatecommand=(self.register(self._is_valid_layer_count), "%P"),
+        ).grid(row=0, column=1, padx=(6, 18), sticky="w")
 
         ttk.Label(action_row, text="Delay before Play (s):").grid(row=0, column=2, padx=(0, 6))
         ttk.Spinbox(action_row, from_=0, to=30, increment=0.5, width=5, textvariable=self.start_delay).grid(
@@ -136,6 +143,9 @@ class LockpickApp(tk.Tk):
         )
         self.play_button = ttk.Button(action_row, text="Play in Gothic", command=self._play)
         self.play_button.grid(row=0, column=8, sticky="e")
+        self.stop_button = ttk.Button(action_row, text="Stop", command=self._stop_play)
+        self.stop_button.grid(row=0, column=9, padx=(8, 0), sticky="e")
+        self.stop_button.grid_remove()
 
         help_text = (
             "Choose linked layers. + moves in the same direction; - moves in the opposite direction. "
@@ -234,9 +244,15 @@ class LockpickApp(tk.Tk):
             ttk.Label(self.table, text=str(layer_id + 1)).grid(
                 row=layer_id + 1, column=0, padx=5, pady=2, sticky="w"
             )
-            ttk.Spinbox(self.table, from_=1, to=7, width=8, textvariable=position).grid(
-                row=layer_id + 1, column=1, padx=5, pady=2
-            )
+            ttk.Spinbox(
+                self.table,
+                from_=1,
+                to=7,
+                width=8,
+                textvariable=position,
+                validate="key",
+                validatecommand=(self.register(self._is_valid_position), "%P"),
+            ).grid(row=layer_id + 1, column=1, padx=5, pady=2)
             self._create_link_button(layer_id, positive, negative, "positive").grid(
                 row=layer_id + 1, column=2, padx=5, pady=2, sticky="ew"
             )
@@ -466,9 +482,12 @@ class LockpickApp(tk.Tk):
         layers = []
         for layer_id, (position, positive, negative) in enumerate(self.layer_rows):
             try:
+                displayed_position = position.get()
+                if not 1 <= displayed_position <= 7:
+                    raise ValueError("position must be between 1 and 7")
                 layers.append(
                     LockLayerDefinition(
-                        position=position.get() - 1,
+                        position=displayed_position - 1,
                         positive_links=tuple(linked_layer - 1 for linked_layer in sorted(positive)),
                         negative_links=tuple(linked_layer - 1 for linked_layer in sorted(negative)),
                     )
@@ -476,6 +495,14 @@ class LockpickApp(tk.Tk):
             except (tk.TclError, ValueError) as error:
                 raise ValueError(f"Layer ll{layer_id}: {error}") from error
         return layers
+
+    @staticmethod
+    def _is_valid_position(proposed_value: str) -> bool:
+        return proposed_value in {"1", "2", "3", "4", "5", "6", "7"}
+
+    @staticmethod
+    def _is_valid_layer_count(proposed_value: str) -> bool:
+        return proposed_value in {"3", "4", "5", "6", "7"}
 
     def _get_solution(self) -> list[Step] | None:
         if self.solution_cached:
@@ -542,23 +569,47 @@ class LockpickApp(tk.Tk):
             return
 
         self.play_button.configure(state="disabled")
+        self.stop_event = threading.Event()
+        self.stop_button.configure(state="normal")
+        self.stop_button.grid()
         threading.Thread(
             target=self._run_game_commands,
-            args=(steps, self.start_delay.get(), self.key_delay.get(), len(self.layer_rows)),
+            args=(
+                steps,
+                self.start_delay.get(),
+                self.key_delay.get(),
+                len(self.layer_rows),
+                self.stop_event,
+            ),
             daemon=True,
         ).start()
 
+    def _stop_play(self) -> None:
+        if self.stop_event is None:
+            return
+        self.stop_event.set()
+        self.stop_button.configure(state="disabled")
+        self.status.set("Stopping simulation...")
+
     def _run_game_commands(
-        self, steps: list[Step], delay: float, key_delay: int, lock_layer_count: int
+        self,
+        steps: list[Step],
+        delay: float,
+        key_delay: int,
+        lock_layer_count: int,
+        stop_event: threading.Event,
     ) -> None:
         whole_seconds = math.ceil(delay)
         for remaining in range(whole_seconds, 0, -1):
             self.events.put(("status", f"Focus Gothic: starting in {remaining}s..."))
-            time.sleep(min(1, delay))
+            if stop_event.wait(min(1, delay)):
+                self.events.put(("status", "Simulation stopped."))
+                self.events.put(("done", None))
+                return
             delay -= 1
         try:
-            GameInputExecutor(lock_layer_count, key_delay).execute(steps)
-            self.events.put(("status", "Commands sent to Gothic."))
+            completed = GameInputExecutor(lock_layer_count, key_delay).execute(steps, stop_event)
+            self.events.put(("status", "Commands sent to Gothic." if completed else "Simulation stopped."))
         except (RuntimeError, ValueError, OSError) as error:
             self.events.put(("error", str(error)))
         finally:
@@ -573,6 +624,8 @@ class LockpickApp(tk.Tk):
                 messagebox.showerror("Unable to send commands", value or "Unknown error")
             elif event == "done":
                 self.play_button.configure(state="normal")
+                self.stop_button.grid_remove()
+                self.stop_event = None
         self.after(100, self._poll_events)
 
 

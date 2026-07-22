@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
-import time
+from threading import Event
 
 from lock_solver import Direction, Step
 
@@ -34,25 +34,37 @@ class GameInputExecutor:
         self.key_delay_seconds = key_delay_ms / 1_000
         self.current_lock_layer = 0
 
-    def execute(self, steps: list[Step]) -> None:
+    def execute(self, steps: list[Step], stop_event: Event | None = None) -> bool:
         for step in steps:
-            self._select_lock_layer(step.lock_layer_id)
+            if self._is_stopped(stop_event) or not self._select_lock_layer(step.lock_layer_id, stop_event):
+                return False
             key = VK_A if step.direction is Direction.LEFT else VK_D
             for _ in range(step.actions):
-                self._press(key)
+                if not self._press(key, stop_event):
+                    return False
+        return True
 
-    def _select_lock_layer(self, target_layer: int) -> None:
+    def _select_lock_layer(self, target_layer: int, stop_event: Event | None) -> bool:
         if not 0 <= target_layer < self.lock_layer_count:
             raise ValueError("Step references a layer outside the configured range.")
 
         while self.current_lock_layer < target_layer:
-            self._press(VK_W)
+            if not self._press(VK_W, stop_event):
+                return False
             self.current_lock_layer += 1
         while self.current_lock_layer > target_layer:
-            self._press(VK_S)
+            if not self._press(VK_S, stop_event):
+                return False
             self.current_lock_layer -= 1
+        return True
 
-    def _press(self, virtual_key: int) -> None:
+    def _press(self, virtual_key: int, stop_event: Event | None) -> bool:
+        if self._is_stopped(stop_event):
+            return False
         ctypes.windll.user32.keybd_event(virtual_key, 0, 0, 0)
         ctypes.windll.user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0)
-        time.sleep(self.key_delay_seconds)
+        return not (stop_event and stop_event.wait(self.key_delay_seconds))
+
+    @staticmethod
+    def _is_stopped(stop_event: Event | None) -> bool:
+        return stop_event is not None and stop_event.is_set()

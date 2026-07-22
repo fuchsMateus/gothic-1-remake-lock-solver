@@ -1,5 +1,9 @@
 # Gothic 1 Remake Lockpick
 
+<p align="center">
+  <img src="assets/gothic-lock-solver-logo.png" alt="Gothic 1 Remake Lockpick logo" width="320">
+</p>
+
 Desktop application for configuring a lock, finding a minimum movement sequence, and sending it to Gothic 1 Remake.
 
 ## Run
