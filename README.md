@@ -34,7 +34,7 @@ The executor starts at layer `1` and uses:
 - `A`: `LEFT`
 - `D`: `RIGHT`
 
-Some games may ignore simulated Windows input. If that happens, increase the delay between keys or use an input method compatible with the game.
+If Gothic 1 Remake does not register the simulated input, increase the delay between keys.
 
 ## Tests
 

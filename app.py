@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from game_input import GameInputExecutor
+from lock_preview import LockPreview
 from lock_solver import Direction, LockLayerDefinition, LockSolver, SolverLimitError, Step
 
 
@@ -24,6 +25,7 @@ class LockpickApp(tk.Tk):
         self.steps: list[Step] | None = None
         self.events: queue.Queue[tuple[str, str | None]] = queue.Queue()
         self.rebuild_job: str | None = None
+        self.selected_layer = 0
         self.layer_count.trace_add("write", self._schedule_table_rebuild)
 
         self._build_controls()
@@ -60,8 +62,28 @@ class LockpickApp(tk.Tk):
             row=1, column=0, columnspan=8, sticky="w", pady=(10, 0)
         )
 
-        self.table = ttk.Frame(self, padding=(12, 0, 12, 8))
-        self.table.grid(row=1, column=0, sticky="nsew")
+        workspace = ttk.Frame(self, padding=(12, 0, 12, 8))
+        workspace.grid(row=1, column=0, sticky="nsew")
+        workspace.columnconfigure(1, weight=1)
+
+        self.table = ttk.Frame(workspace)
+        self.table.grid(row=0, column=0, sticky="nw", padx=(0, 16))
+
+        preview_frame = ttk.LabelFrame(workspace, text="Lock preview", padding=6)
+        preview_frame.grid(row=0, column=1, sticky="nsew")
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(0, weight=1)
+        self.preview = LockPreview(
+            preview_frame,
+            on_select_layer=self._select_layer,
+            on_set_position=self._set_layer_position,
+        )
+        self.preview.grid(row=0, column=0, sticky="nsew")
+        preview_scrollbar = ttk.Scrollbar(
+            preview_frame, orient="vertical", command=self.preview.yview
+        )
+        preview_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.preview.configure(yscrollcommand=preview_scrollbar.set)
         self.columnconfigure(0, weight=1)
 
         result_frame = ttk.LabelFrame(self, text="Solution", padding=8)
@@ -106,6 +128,7 @@ class LockpickApp(tk.Tk):
                 linked_layer for linked_layer in previous[layer_id][2] if linked_layer <= count
             } if layer_id < len(previous) else set()
             self.layer_rows.append((position, positive, negative))
+            position.trace_add("write", lambda *_: self._render_preview())
 
             ttk.Label(self.table, text=str(layer_id + 1)).grid(
                 row=layer_id + 1, column=0, padx=5, pady=2, sticky="w"
@@ -119,6 +142,24 @@ class LockpickApp(tk.Tk):
             self._create_link_button(layer_id, negative, positive, "negative").grid(
                 row=layer_id + 1, column=3, padx=5, pady=2, sticky="ew"
             )
+
+        self.selected_layer = min(self.selected_layer, count - 1)
+        self._render_preview()
+
+    def _render_preview(self) -> None:
+        try:
+            positions = [position.get() for position, _, _ in self.layer_rows]
+        except tk.TclError:
+            return
+        self.preview.render(positions, self.selected_layer)
+
+    def _select_layer(self, layer_id: int) -> None:
+        self.selected_layer = layer_id
+        self._render_preview()
+
+    def _set_layer_position(self, layer_id: int, position: int) -> None:
+        self.layer_rows[layer_id][0].set(position)
+        self._select_layer(layer_id)
 
     def _create_link_button(
         self, source_layer: int, selected: set[int], excluded: set[int], link_type: str
