@@ -13,6 +13,21 @@ from lock_preview import LockPreview
 from lock_solver import Direction, LockLayerDefinition, LockSolver, SolverLimitError, Step
 from preset_store import PresetStore
 
+DEFAULT_PRESET_NAME = "Default"
+
+
+def build_default_preset() -> dict[str, object]:
+    return {
+        "name": DEFAULT_PRESET_NAME,
+        "layerCount": 7,
+        "layers": [
+            {"position": 4, "positiveLinks": [], "negativeLinks": []}
+            for _ in range(7)
+        ],
+        "startDelaySeconds": 3.0,
+        "keyDelayMilliseconds": 100,
+    }
+
 
 class Tooltip:
     def __init__(self, widget: tk.Widget, text: str) -> None:
@@ -67,7 +82,7 @@ class LockpickApp(tk.Tk):
         self.layer_count = tk.IntVar(value=7)
         self.start_delay = tk.DoubleVar(value=3.0)
         self.key_delay = tk.IntVar(value=100)
-        self.preset_name = tk.StringVar()
+        self.preset_name = tk.StringVar(value=DEFAULT_PRESET_NAME)
         self.status = tk.StringVar(value="Configure the layers and click Play in Gothic.")
         self.layer_rows: list[tuple[tk.IntVar, set[int], set[int]]] = []
         self.steps: list[Step] | None = None
@@ -307,15 +322,23 @@ class LockpickApp(tk.Tk):
         )
 
     def _refresh_preset_choices(self, selected_name: str | None = None) -> None:
-        names = sorted(self.presets, key=str.lower)
+        names = [DEFAULT_PRESET_NAME] + sorted(
+            (name for name in self.presets if name != DEFAULT_PRESET_NAME), key=str.lower
+        )
         self.preset_selector.configure(values=names)
-        if selected_name in self.presets:
+        if selected_name in names:
             self.preset_name.set(selected_name)
-        elif self.preset_name.get() not in self.presets:
-            self.preset_name.set("")
+        elif self.preset_name.get() not in names:
+            self.preset_name.set(DEFAULT_PRESET_NAME)
 
     def _load_selected_preset(self, _event: tk.Event | None = None) -> None:
-        preset = self.presets.get(self.preset_name.get())
+        name = self.preset_name.get()
+        if name == DEFAULT_PRESET_NAME:
+            self._apply_preset(build_default_preset())
+            self.status.set("Loaded default configuration.")
+            return
+
+        preset = self.presets.get(name)
         if preset is None:
             self.status.set("Select a preset to load.")
             return
@@ -328,7 +351,7 @@ class LockpickApp(tk.Tk):
 
     def _save_preset(self) -> None:
         name = self.preset_name.get()
-        if not name:
+        if not name or name == DEFAULT_PRESET_NAME:
             self._save_preset_as()
             return
         self.presets[name] = self._build_preset(name)
@@ -342,6 +365,9 @@ class LockpickApp(tk.Tk):
         if not name:
             messagebox.showerror("Invalid preset name", "Preset names cannot be empty.")
             return
+        if name.casefold() == DEFAULT_PRESET_NAME.casefold():
+            messagebox.showerror("Reserved preset name", "'Default' is reserved for the built-in configuration.")
+            return
         if name in self.presets and not messagebox.askyesno(
             "Replace preset", f"Replace the existing preset '{name}'?", parent=self
         ):
@@ -351,6 +377,9 @@ class LockpickApp(tk.Tk):
 
     def _delete_preset(self) -> None:
         name = self.preset_name.get()
+        if name == DEFAULT_PRESET_NAME:
+            self.status.set("The built-in Default preset cannot be deleted.")
+            return
         if not name or name not in self.presets:
             self.status.set("Select a preset to delete.")
             return
