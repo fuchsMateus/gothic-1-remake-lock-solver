@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "presets": [
+    {
+      "name": "Example lock",
+      "layerCount": 6,
+      "layers": [
+        {
+          "position": 2,
+          "positiveLinks": [3],
+          "negativeLinks": [2]
+        },
+        {
+          "position": 4,
+          "positiveLinks": [],
+          "negativeLinks": []
+        },
+        {
+          "position": 5,
+          "positiveLinks": [1],
+          "negativeLinks": [5]
+        },
+        {
+          "position": 7,
+          "positiveLinks": [6],
+          "negativeLinks": [2, 3]
+        },
+        {
+          "position": 5,
+          "positiveLinks": [6],
+          "negativeLinks": [4]
+        },
+        {
+          "position": 5,
+          "positiveLinks": [1],
+          "negativeLinks": []
+        }
+      ],
+      "startDelaySeconds": 3.0,
+      "keyDelayMilliseconds": 100
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import time
 from collections.abc import Callable, Sequence
 
 
@@ -9,14 +10,14 @@ class LockPreview(tk.Canvas):
 
     HOLE_COUNT = 7
     TARGET_POSITION = 4
-    WIDTH = 800
-    HEIGHT = 430
-    HOLE_SPACING = 54
-    PLATE_PADDING = 24
+    WIDTH = 640
+    HEIGHT = 450
+    HOLE_SPACING = 42
+    PLATE_PADDING = 20
     PLATE_HEIGHT = 42
-    LAYER_SPACING = 58
-    BASE_PLATE_X = 195
-    TOP_Y = 52
+    LAYER_SPACING = 52
+    BASE_PLATE_X = 145
+    TOP_Y = 40
 
     def __init__(
         self,
@@ -34,21 +35,14 @@ class LockPreview(tk.Canvas):
         )
         self.on_select_layer = on_select_layer
         self.on_set_position = on_set_position
-        self._mousewheel_active = False
-        self.bind("<Enter>", self._enable_mousewheel)
-        self.bind("<Leave>", self._disable_mousewheel)
-        self.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
-        self.bind_all("<Button-4>", self._on_mousewheel, add="+")
-        self.bind_all("<Button-5>", self._on_mousewheel, add="+")
+        self._animation_after_id: str | None = None
 
-    def render(self, positions: Sequence[int], selected_layer: int) -> None:
+    def render(self, positions: Sequence[float], selected_layer: int) -> None:
         self.delete("all")
         layer_count = len(positions)
         if not layer_count:
             return
 
-        content_height = self._content_height(layer_count)
-        self.configure(scrollregion=(0, 0, self.WIDTH, content_height))
         pin_x = self._pin_x()
         bottom_y = self._layer_y(0, layer_count)
         top_y = self._layer_y(layer_count - 1, layer_count)
@@ -60,13 +54,53 @@ class LockPreview(tk.Canvas):
 
         self.create_text(
             self.WIDTH / 2,
-            content_height - 14,
+            self.HEIGHT - 14,
             text="Click a layer to select it. Click one of its holes to set its position.",
             fill="#bfc2c5",
             font=("Segoe UI", 9),
         )
 
-    def _draw_layer(self, layer_id: int, position: int, layer_count: int, selected: bool) -> None:
+    @property
+    def is_animating(self) -> bool:
+        return self._animation_after_id is not None
+
+    def animate_layer(
+        self,
+        layer_id: int,
+        target_position: int,
+        positions: Sequence[int],
+        selected_layer: int,
+        on_complete: Callable[[], None],
+    ) -> None:
+        if self.is_animating:
+            return
+
+        start_position = positions[layer_id]
+        if start_position == target_position:
+            on_complete()
+            return
+
+        animation_positions = list(positions)
+        started_at = time.monotonic()
+        duration_seconds = max(0.18, 0.12 * abs(target_position - start_position))
+
+        def tick() -> None:
+            progress = min(1.0, (time.monotonic() - started_at) / duration_seconds)
+            eased_progress = 1 - (1 - progress) ** 3
+            animation_positions[layer_id] = start_position + (
+                target_position - start_position
+            ) * eased_progress
+            self.render(animation_positions, selected_layer)
+            if progress < 1.0:
+                self._animation_after_id = self.after(16, tick)
+                return
+
+            self._animation_after_id = None
+            on_complete()
+
+        self._animation_after_id = self.after_idle(tick)
+
+    def _draw_layer(self, layer_id: int, position: float, layer_count: int, selected: bool) -> None:
         plate_x = self._plate_x(position)
         plate_y = self._layer_y(layer_id, layer_count)
         plate_width = self.PLATE_PADDING * 2 + (self.HOLE_COUNT - 1) * self.HOLE_SPACING
@@ -104,7 +138,7 @@ class LockPreview(tk.Canvas):
         )
 
         self.create_text(
-            754,
+            594,
             plate_y + self.PLATE_HEIGHT / 2,
             text=f"Layer {layer_id + 1}",
             fill="#f0e8da" if selected else "#c5c7c8",
@@ -153,8 +187,9 @@ class LockPreview(tk.Canvas):
                     tags=(layer_tag, hole_tag),
                 )
 
-        pin_color = "#bf302b" if position == self.TARGET_POSITION else "#b3884f"
-        pin_outline = "#ff766d" if position == self.TARGET_POSITION else "#e1ba77"
+        is_aligned = abs(position - self.TARGET_POSITION) < 0.01
+        pin_color = "#bf302b" if is_aligned else "#b3884f"
+        pin_outline = "#ff766d" if is_aligned else "#e1ba77"
         pin_x = self._pin_x()
         self.create_oval(
             pin_x - 8,
@@ -173,7 +208,7 @@ class LockPreview(tk.Canvas):
         self.on_set_position(layer_id, position)
         return "break"
 
-    def _plate_x(self, position: int) -> int:
+    def _plate_x(self, position: float) -> float:
         return self.BASE_PLATE_X + (self.TARGET_POSITION - position) * self.HOLE_SPACING
 
     def _pin_x(self) -> int:
@@ -181,26 +216,3 @@ class LockPreview(tk.Canvas):
 
     def _layer_y(self, layer_id: int, layer_count: int) -> int:
         return self.TOP_Y + (layer_count - 1 - layer_id) * self.LAYER_SPACING
-
-    def _content_height(self, layer_count: int) -> int:
-        bottom_layer_y = self._layer_y(0, layer_count)
-        return max(self.HEIGHT, bottom_layer_y + self.PLATE_HEIGHT + 42)
-
-    def _enable_mousewheel(self, _event: tk.Event) -> None:
-        self._mousewheel_active = True
-
-    def _disable_mousewheel(self, _event: tk.Event) -> None:
-        self._mousewheel_active = False
-
-    def _on_mousewheel(self, event: tk.Event) -> str | None:
-        if not self._mousewheel_active:
-            return None
-
-        if getattr(event, "delta", 0):
-            amount = -int(event.delta / 120)
-        elif event.num == 4:
-            amount = -1
-        else:
-            amount = 1
-        self.yview_scroll(amount or (-1 if event.delta > 0 else 1), "units")
-        return "break"

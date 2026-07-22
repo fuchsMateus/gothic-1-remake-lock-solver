@@ -12,8 +12,15 @@ python app.py
 
 There are no external dependencies: the interface uses `tkinter` and keyboard output uses the native Windows API.
 
+## Presets
+
+Use **Save as...** to give the current lock configuration a name. Saved presets can be selected, loaded, updated, or deleted from the preset controls at the top of the window.
+
+The first launch creates `%LOCALAPPDATA%\Gothic1RemakeLockpick\presets.json`, seeded from the included example preset. This local file stores the layer configuration and keyboard-delay settings.
+
 ## Configuration
 
+- **Layers**: choose from 3 to 7 layers.
 - **Initial position**: a value from 1 to 7. The solver's target is position `4` in the interface.
 - **Positive links**: select the layers that move in the same direction.
 - **Negative links**: select the layers that move in the opposite direction.
@@ -22,10 +29,11 @@ IDs follow the table: the first row is `1`, followed by `2`, and so on.
 
 ## Run in the game
 
-1. Fill in the table and click **Solve**.
-2. Choose the delay before Play and the delay between keys.
-3. With the puzzle open in Gothic, click **Play in Gothic**.
-4. Focus the game window during the countdown.
+1. Fill in the table and choose the delay before Play and the delay between keys.
+2. With the puzzle open in Gothic, click **Play in Gothic**.
+3. The app solves the lock, then focus the game window during the countdown.
+
+Use **Copy solution to clipboard** to copy the current movement sequence as text. The solver result is reused until the lock configuration changes.
 
 The executor starts at layer `1` and uses:
 
