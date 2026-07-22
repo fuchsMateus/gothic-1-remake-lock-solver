@@ -1,5 +1,3 @@
-# Gothic 1 Remake Lockpick
-
 <p align="center">
   <img src="assets/gothic-lock-solver-logo.png" alt="Gothic 1 Remake Lockpick logo" width="320">
 </p>
