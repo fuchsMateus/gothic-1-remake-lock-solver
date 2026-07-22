@@ -11,7 +11,7 @@ Desktop application for configuring a lock, finding a minimum movement sequence,
 On Windows, with Python 3.10 or newer installed:
 
 ```powershell
-python app.py
+python gothic_lockpick.py
 ```
 
 There are no external dependencies: the interface uses `tkinter` and keyboard output uses the native Windows API.
@@ -35,7 +35,7 @@ IDs follow the table: the first row is `1`, followed by `2`, and so on.
 
 1. Fill in the table and choose the delay before Play and the delay between keys.
 2. With the puzzle open in Gothic, click **Play in Gothic**.
-3. The app solves the lock, then focus the game window during the countdown.
+3. The app solves the lock. During the countdown, manually focus the Gothic 1 Remake game window.
 
 Use **Copy solution to clipboard** to copy the current movement sequence as text. The solver result is reused until the lock configuration changes.
 
