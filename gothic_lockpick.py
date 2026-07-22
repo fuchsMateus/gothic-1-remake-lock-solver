@@ -85,6 +85,7 @@ class LockpickApp(tk.Tk):
         self.preset_name = tk.StringVar(value=DEFAULT_PRESET_NAME)
         self.status = tk.StringVar(value="Configure the layers and click Play in Gothic.")
         self.layer_rows: list[tuple[tk.IntVar, set[int], set[int]]] = []
+        self.link_buttons: list[tuple[ttk.Button, ttk.Button]] = []
         self.steps: list[Step] | None = None
         self.solution_cached = False
         self.events: queue.Queue[tuple[str, str | None]] = queue.Queue()
@@ -233,6 +234,7 @@ class LockpickApp(tk.Tk):
         for child in self.table.winfo_children():
             child.destroy()
         self.layer_rows = []
+        self.link_buttons = []
 
         headers = ("Layer", "Initial position", "Positive links", "Negative links")
         for column, header in enumerate(headers):
@@ -268,12 +270,15 @@ class LockpickApp(tk.Tk):
                 validate="key",
                 validatecommand=(self.register(self._is_valid_position), "%P"),
             ).grid(row=layer_id + 1, column=1, padx=5, pady=2)
-            self._create_link_button(layer_id, positive, negative, "positive").grid(
+            positive_button = self._create_link_button(layer_id, positive, negative, "positive")
+            positive_button.grid(
                 row=layer_id + 1, column=2, padx=5, pady=2, sticky="ew"
             )
-            self._create_link_button(layer_id, negative, positive, "negative").grid(
+            negative_button = self._create_link_button(layer_id, negative, positive, "negative")
+            negative_button.grid(
                 row=layer_id + 1, column=3, padx=5, pady=2, sticky="ew"
             )
+            self.link_buttons.append((positive_button, negative_button))
 
         self.selected_layer = min(self.selected_layer, count - 1)
         self._render_preview()
@@ -428,7 +433,7 @@ class LockpickApp(tk.Tk):
             self.rebuild_job = None
         self._rebuild_table()
 
-        for row, saved_layer in zip(self.layer_rows, layers):
+        for row, saved_layer, buttons in zip(self.layer_rows, layers, self.link_buttons):
             if not isinstance(saved_layer, dict):
                 raise ValueError("invalid layer entry")
             position, positive, negative = row
@@ -437,6 +442,9 @@ class LockpickApp(tk.Tk):
             positive.update(int(linked_layer) for linked_layer in saved_layer["positiveLinks"])
             negative.clear()
             negative.update(int(linked_layer) for linked_layer in saved_layer["negativeLinks"])
+            positive_button, negative_button = buttons
+            positive_button.configure(text=self._link_button_text(positive))
+            negative_button.configure(text=self._link_button_text(negative))
         self.start_delay.set(float(preset["startDelaySeconds"]))
         self.key_delay.set(int(preset["keyDelayMilliseconds"]))
         self._render_preview()
